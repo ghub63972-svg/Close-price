@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Price Close: The Grind</title>
+    <style>
+        :root {
+            --bg: #05070a;
+            --accent: #ff4757;
+            --gold: #f1c40f;
+            --silver: #bdc3c7;
+            --bronze: #cd7f32;
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            margin: 0; padding: 0; font-family: 'Inter', sans-serif;
+            background: var(--bg); color: white; height: 100vh; overflow: hidden;
+        }
+
+        #app { width: 100%; max-width: 430px; height: 100%; margin: 0 auto; position: relative; }
+
+        .screen {
+            position: absolute; inset: 0; padding: 30px;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(circle at top, #111827, #05070a);
+        }
+        .screen.active { display: flex; animation: fadeIn 0.3s ease; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* --- Rank UI --- */
+        .rank-tag {
+            padding: 5px 15px; border-radius: 4px; font-weight: 900;
+            font-size: 0.8rem; text-transform: uppercase; margin-bottom: 10px;
+        }
+
+        .bar-container { width: 100%; height: 8px; background: #222; border-radius: 10px; margin: 10px 0; overflow: hidden; }
+        #bar-fill { width: 0%; height: 100%; background: var(--gold); transition: width 1s ease-in-out; }
+
+        /* --- Game Elements --- */
+        .timer-line { width: 100%; height: 4px; background: #333; position: fixed; top: 0; left: 0; }
+        #timer-fill { width: 100%; height: 100%; background: var(--accent); transition: width 1s linear; }
+
+        #budget-val { font-size: 3.5rem; font-weight: 900; letter-spacing: -2px; }
+
+        .items-box { flex: 1; overflow-y: auto; width: 100%; margin: 20px 0; }
+        .item-card {
+            background: var(--glass); padding: 15px; border-radius: 12px;
+            margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .btn {
+            width: 100%; padding: 18px; border: none; border-radius: 12px;
+            font-weight: 900; font-size: 1.1rem; cursor: pointer; text-transform: uppercase;
+        }
+        .btn-main { background: var(--accent); color: white; box-shadow: 0 5px 0 #b33939; }
+        .btn-check { background: #2ed573; color: white; box-shadow: 0 5px 0 #1b8d4b; }
+        .btn-exit { background: transparent; color: white; border: 1px solid #444; margin-top: 10px; }
+
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="home" class="screen active">
+        <div id="h-tag" class="rank-tag">BRONZE</div>
+        <h1 style="font-size: 2.8rem; margin: 0;">PRICE CLOSE</h1>
+        <p style="opacity: 0.6; margin-bottom: 20px;">RANK POINTS: <span id="h-rp">0</span></p>
+        
+        <div style="width: 100%; margin-bottom: 30px;">
+            <div style="font-size: 0.7rem; opacity: 0.5;">NEXT RANK PROGRESS</div>
+            <div class="bar-container"><div id="h-bar-fill"></div></div>
+        </div>
+        
+        <button class="btn btn-main" onclick="startLevel()">START MATCH</button>
+    </div>
+
+    <div id="game" class="screen" style="justify-content: flex-start; padding-top: 20px;">
+        <div class="timer-line"><div id="timer-fill"></div></div>
+        <div id="budget-val">$0</div>
+        <div id="clock" style="color: var(--accent); font-weight: 900;">60s</div>
+        
+        <div class="items-box" id="list"></div>
+        <button class="btn btn-check" onclick="checkout()">CHECKOUT</button>
+    </div>
+
+    <div id="result" class="screen">
+        <h2 id="res-status" style="margin: 0;">BOOYAH!</h2>
+        <h1 id="res-gap" style="font-size: 3.5rem; margin: 10px 0;">$0</h1>
+        
+        <div class="bar-container" style="width: 80%;"><div id="res-bar-fill"></div></div>
+        <div id="res-rp" style="color: var(--gold); font-weight: bold; margin-bottom: 30px;">+10 RP</div>
+        
+        <button id="next-btn" class="btn btn-main" onclick="startLevel()">NEXT LEVEL</button>
+        <button class="btn btn-exit" onclick="toLobby()">LOBBY</button>
+    </div>
+</div>
+
+<script>
+    let rp = 0;
+    let level = 1;
+    let budget = 0;
+    let time = 60;
+    let timerLoop = null;
+
+    const inventory = ["Luxury Jet", "Island", "Hypercar", "Mansion", "Diamond", "Gold Bar", "Yacht", "Private Chef", "Tech Suite", "Boutique"];
+
+    function getRank(points) {
+        if (points < 100) return { name: "BRONZE", color: "#cd7f32", min: 0, max: 100 };
+        if (points < 300) return { name: "SILVER", color: "#bdc3c7", min: 100, max: 300 };
+        if (points < 600) return { name: "GOLD", color: "#f1c40f", min: 300, max: 600 };
+        return { name: "PLATINUM", color: "#2ed573", min: 600, max: 1000 };
+    }
+
+    function toLobby() {
+        const r = getRank(rp);
+        document.getElementById('h-tag').innerText = r.name;
+        document.getElementById('h-tag').style.background = r.color;
+        document.getElementById('h-rp').innerText = rp;
+        
+        const pct = ((rp - r.min) / (r.max - r.min)) * 100;
+        document.getElementById('h-bar-fill').style.width = pct + "%";
+        show('home');
+    }
+
+    function show(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function startLevel() {
+        time = 60;
+        budget = Math.floor(Math.random() * (level * 10000)) + 5000;
+        const list = document.getElementById('list');
+        list.innerHTML = '';
+        
+        for(let i=0; i<8; i++) {
+            let n = inventory[Math.floor(Math.random()*inventory.length)];
+            let p = Math.floor(Math.random() * (budget/2)) + 200;
+            const div = document.createElement('div');
+            div.className = 'item-card';
+            div.innerHTML = `<div><b>${n}</b><br><small style="color:var(--gold)">$${p.toLocaleString()}</small></div>
+                             <button onclick="buy(${p}, this)" style="background:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold;">BUY</button>`;
+            list.appendChild(div);
+        }
+
+        updateUI();
+        show('game');
+
+        timerLoop = setInterval(() => {
+            time--;
+            document.getElementById('clock').innerText = time + "s";
+            document.getElementById('timer-fill').style.width = (time/60)*100 + "%";
+            if(time <= 0) checkout();
+        }, 1000);
+    }
+
+    function buy(p, b) {
+        budget -= p;
+        b.disabled = true; b.style.opacity = 0.2;
+        updateUI();
+    }
+
+    function updateUI() {
+        const el = document.getElementById('budget-val');
+        el.innerText = "$" + budget.toLocaleString();
+        el.style.color = budget < 0 ? 'var(--accent)' : 'white';
+    }
+
+    function checkout() {
+        clearInterval(timerLoop);
+        show('result');
+        const gap = Math.abs(budget);
+        const limit = Math.max(50, 800 - (level * 20));
+        
+        document.getElementById('res-gap').innerText = "$" + gap.toLocaleString();
+        const r = getRank(rp);
+        
+        if (budget >= 0 && gap <= limit) {
+            rp += 10;
+            level++;
+            document.getElementById('res-status').innerText = "BOOYAH!";
+            document.getElementById('res-status').style.color = "var(--success)";
+            document.getElementById('res-rp').innerText = "+10 RP";
+            document.getElementById('res-rp').style.color = "var(--gold)";
+            document.getElementById('next-btn').style.display = 'block';
+        } else {
+            rp = Math.max(0, rp - 5);
+            document.getElementById('res-status').innerText = "ELIMINATED";
+            document.getElementById('res-status').style.color = "var(--accent)";
+            document.getElementById('res-rp').innerText = "-5 RP";
+            document.getElementById('res-rp').style.color = "var(--accent)";
+            document.getElementById('next-btn').style.display = 'none';
+        }
+
+        const newR = getRank(rp);
+        const pct = ((rp - newR.min) / (newR.max - newR.min)) * 100;
+        document.getElementById('res-bar-fill').style.width = pct + "%";
+    }
+</script>
+</body>
+</html>
